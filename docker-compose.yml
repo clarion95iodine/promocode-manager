@@ -1,0 +1,83 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - '3001:3001'
+    environment:
+      PORT: 3001
+      MONGO_URL: mongodb://mongo:27017/promocode-manager
+      REDIS_URL: redis://redis:6379
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: default
+      CLICKHOUSE_DATABASE: default
+      JWT_ACCESS_SECRET: access-secret
+      JWT_REFRESH_SECRET: refresh-secret
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - '5173:80'
+    environment:
+      VITE_API_URL: http://localhost:3001
+    depends_on:
+      - backend
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    restart: unless-stopped
+    ports:
+      - '8123:8123'
+      - '9000:9000'
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/users.d/default-password.xml:/etc/clickhouse-server/users.d/default-password.xml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q Ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  mongo_data:
+  redis_data:
+  clickhouse_data:
